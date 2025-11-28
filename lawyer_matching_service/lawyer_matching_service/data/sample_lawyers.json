@@ -1,0 +1,53 @@
+[
+  {
+    "lawyer_id": "lawyer-criminal-001",
+    "name": "ทนายอดิศักดิ์ วิริยะ",
+    "summary": "อดีตอัยการ เชี่ยวชาญคดีทำร้ายร่างกายและคดีอาชญากรรมรุนแรง",
+    "description": "ดูแลลูกความมากกว่า 200 คดี เน้นการรวบรวมพยานหลักฐานและเจรจาต่อรอง",
+    "lawfirm_name": "Bangkok Justice Group",
+    "consult_min_price": 2500,
+    "consult_max_price": 6000,
+    "document_delivery_min_price": 1200,
+    "document_delivery_max_price": 3200,
+    "civil_case_specialization": ["ละเมิด", "คดีครอบครัว"],
+    "criminal_case_specialization": ["ทำร้ายร่างกาย", "กรรโชก", "ข่มขู่"],
+    "has_lawyer_license": true,
+    "is_verified_by_court": true,
+    "avg_rating": 4.85,
+    "review_count": 142
+  },
+  {
+    "lawyer_id": "lawyer-criminal-002",
+    "name": "ทนายจิราวรรณ สิทธิการ",
+    "summary": "ทนายความหญิง เชี่ยวชาญการว่าความคดีอาญากลุ่มเยาวชน",
+    "description": "มีเครือข่ายนักสืบเอกชนและทีมงานลงพื้นที่ครบวงจร",
+    "lawfirm_name": "Siam Defender",
+    "consult_min_price": 1800,
+    "consult_max_price": 4500,
+    "document_delivery_min_price": 900,
+    "document_delivery_max_price": 2100,
+    "civil_case_specialization": ["คดีผู้บริโภค"],
+    "criminal_case_specialization": ["อาชญากรรมไซเบอร์", "ทำร้ายร่างกาย"],
+    "has_lawyer_license": true,
+    "is_verified_by_court": false,
+    "avg_rating": 4.6,
+    "review_count": 87
+  },
+  {
+    "lawyer_id": "lawyer-civil-001",
+    "name": "ทนายชยพล พิทักษ์ไพศาล",
+    "summary": "ถนัดคดีแพ่ง กรรมสิทธิ์ที่ดิน สัญญาก่อสร้าง และละเมิด",
+    "description": "ประสบการณ์กว่า 15 ปี ในศาลแพ่งและศาลทรัพย์สินทางปัญญา",
+    "lawfirm_name": "Advance Civil Law",
+    "consult_min_price": 3000,
+    "consult_max_price": 7000,
+    "document_delivery_min_price": 1500,
+    "document_delivery_max_price": 3400,
+    "civil_case_specialization": ["ที่ดิน", "อสังหาริมทรัพย์", "ละเมิด"],
+    "criminal_case_specialization": [],
+    "has_lawyer_license": true,
+    "is_verified_by_court": true,
+    "avg_rating": 4.9,
+    "review_count": 201
+  }
+]
