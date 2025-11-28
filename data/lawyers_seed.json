@@ -1,0 +1,62 @@
+[
+  {
+    "lawyer_id": "lawyer_001",
+    "name": "Anurak Chaipipat",
+    "summary": "อดีตอนุอัยการ ดูแลคดีอาญาและความรุนแรงในครอบครัว",
+    "slogan": "พูดตรง เคลียร์ทุกคดีเลือดร้อน",
+    "description": "รับว่าความคดีทำร้ายร่างกาย คดีจลาจล และข้อกล่าวหากับตำรวจ ด้วยประสบการณ์กว่า 8 ปี",
+    "civil_case_specialization": ["ละเมิด", "ลูกหนี้-เจ้าหนี้"],
+    "criminal_case_specialization": ["ทำร้ายร่างกาย", "อาวุธผิดกฎหมาย"],
+    "languages": ["th", "en"],
+    "consult_min_price": 1500,
+    "consult_max_price": 3000,
+    "document_delivery_min_price": 800,
+    "document_delivery_max_price": 1800,
+    "tags": ["ตำรวจ", "ความรุนแรง", "battery"]
+  },
+  {
+    "lawyer_id": "lawyer_002",
+    "name": "Benjamas Rattanawong",
+    "summary": "เชี่ยวชาญคดีแพ่ง สัญญา และทรัพย์สิน",
+    "slogan": "ปิดจบทุกสัญญา",
+    "description": "โฟกัสคดีละเมิด ความรับผิดเพิกถอนสัญญา คดีผู้บริโภค",
+    "civil_case_specialization": ["สัญญา", "ทรัพย์สิน"],
+    "criminal_case_specialization": [],
+    "languages": ["th"],
+    "consult_min_price": 1200,
+    "consult_max_price": 2000,
+    "document_delivery_min_price": 600,
+    "document_delivery_max_price": 1200,
+    "tags": ["civil", "contract"]
+  },
+  {
+    "lawyer_id": "lawyer_003",
+    "name": "Sorasak Pimsen",
+    "summary": "มีประสบการณ์คดีไซเบอร์และฉ้อโกงออนไลน์",
+    "slogan": "Tech law defender",
+    "description": "จัดการคดีฉ้อโกงทางคอมฯ ฟอกเงิน และพ.ร.บ.คอม",
+    "civil_case_specialization": [],
+    "criminal_case_specialization": ["ฉ้อโกง", "คดีไซเบอร์"],
+    "languages": ["th", "en"],
+    "consult_min_price": 1800,
+    "consult_max_price": 3200,
+    "document_delivery_min_price": 1000,
+    "document_delivery_max_price": 2000,
+    "tags": ["cyber", "fraud"]
+  },
+  {
+    "lawyer_id": "lawyer_004",
+    "name": "Naree Kittisak",
+    "summary": "ถนัดคดีครอบครัวและแรงงาน",
+    "slogan": "รักษาความยุติธรรมในบ้านและที่ทำงาน",
+    "description": "ประนีประนอมคดีแรงงาน เลี้ยงดู และหย่า",
+    "civil_case_specialization": ["ครอบครัว", "แรงงาน"],
+    "criminal_case_specialization": ["ละเมิดต่อเด็ก"],
+    "languages": ["th"],
+    "consult_min_price": 1000,
+    "consult_max_price": 2500,
+    "document_delivery_min_price": 500,
+    "document_delivery_max_price": 1500,
+    "tags": ["family", "labor"]
+  }
+]

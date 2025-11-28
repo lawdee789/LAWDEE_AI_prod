@@ -1,1 +1,139 @@
-ReadMe
+# Lawyer Semantic Matching Service
+
+Python-based microservice that ranks the top-k lawyers for a case description using multilingual Sentence Transformers. The service is intentionally framework-agnostic on the caller side, so your existing Express backend can interact with it over HTTP without any additional SDKs.
+
+## Stack
+- FastAPI + Uvicorn ASGI server
+- `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (works well for Thai + English)
+- Simple JSON repository for lawyer profiles (can be swapped for Postgres, Mongo, etc.)
+
+## Project Layout
+```
+/requirements.txt            -> Python deps
+/main.py                     -> FastAPI entry point
+/matcher_service/*           -> Core engine + schemas + config
+/data/lawyers_seed.json      -> Starter lawyer catalog (replace with your own data)
+```
+
+## Getting Started
+1. **Python environment (>=3.10 recommended):**
+   ```bash
+   cd /workspace
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+2. **Environment variables (optional but recommended):** create a `.env` file next to `main.py` if you need to override defaults.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `SENTENCE_TRANSFORMER_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | HuggingFace model id |
+| `LAWYER_DATA_PATH` | `data/lawyers_seed.json` | File (or mounted volume) storing lawyer records |
+| `MATCHER_DEFAULT_TOP_K` | `5` | Default number of lawyers to return |
+| `MATCHER_SIMILARITY` | `cosine` | Reserved for future scoring strategies |
+| `MATCHER_NORMALIZE` | `1` | Normalize embeddings before scoring |
+
+3. **Run the service:**
+   ```bash
+   uvicorn main:app --host 0.0.0.0 --port 8001
+   ```
+   The Express backend can now call `http://matcher-service:8001` (or whatever hostname you expose).
+
+## Indexing / Keeping Lawyers Fresh
+Use the bulk upsert endpoint whenever your Express app creates or updates lawyer profiles. The service writes everything to `LAWYER_DATA_PATH` and rebuilds the in-memory vector index automatically.
+
+```
+POST /api/v1/lawyers
+{
+  "lawyers": [
+    {
+      "lawyer_id": "2ed91761",
+      "name": "Punpao Prime",
+      "summary": "อดีตอบรมตำรวจ ชำนาญคดีทำร้ายร่างกาย",
+      "criminal_case_specialization": ["ทำร้ายร่างกาย", "ข่มขู่"],
+      "civil_case_specialization": ["ละเมิด"],
+      "languages": ["th"],
+      "tags": ["ตำรวจ", "battery"],
+      "description": "ดูแลลูกความถูกทำร้ายในกรุงเทพฯ" 
+    }
+  ]
+}
+```
+Response: `{ "success": true, "count": <total_lawyers_in_store> }`
+
+> Tip: if you already have the lawyer JSON in Express, simply forward it as-is; the schemas are intentionally close to your Prisma/Mongoose models.
+
+## Matching Endpoint
+```
+POST /api/v1/match
+{
+  "case": {
+    "case_id": "2ed91761-dd1d-458e-aba3-6ffed46f8482",
+    "title": "โดนข่มขู่คำร้ายร่างกาย",
+    "category": "CRIMINAL",
+    "description": "เหตุเกิดเมื่อวันที่ 1 กันยายน 2568 ...",
+    "note": "อยากให้คนมารัก"
+  },
+  "top_k": 3,
+  "allowed_lawyer_ids": null,
+  "include_vectors": false
+}
+```
+Response structure:
+```
+{
+  "case_id": "2ed91761-dd1d-458e-aba3-6ffed46f8482",
+  "top_k": 3,
+  "count": 3,
+  "results": [
+    {
+      "lawyer_id": "lawyer_001",
+      "score": 0.78,
+      "lawyer": { ... original lawyer payload ... }
+    }
+  ]
+}
+```
+- `allowed_lawyer_ids`: optional whitelist if you already shortlisted candidates elsewhere.
+- `include_vectors`: debug flag to return raw embeddings (off by default to reduce payload size).
+
+## Calling from Express
+Bind the Python service URL to your Express configuration (env: `LAWYER_MATCHER_URL`). Example using `axios`:
+```ts
+import axios from 'axios'
+
+export const matchLawyers = async (casePayload) => {
+  const { data } = await axios.post(`${process.env.LAWYER_MATCHER_URL}/api/v1/match`, {
+    case: {
+      case_id: casePayload.case_id,
+      title: casePayload.title,
+      category: casePayload.category,
+      description: casePayload.description,
+      note: casePayload.note,
+    },
+    top_k: casePayload.top_k ?? 5,
+    allowed_lawyer_ids: casePayload.allowedLawyers ?? null,
+  })
+  return data.results
+}
+```
+Make sure the Express server calls the bulk upsert endpoint whenever a lawyer profile is created or edited so the Python index stays in sync.
+
+## Deployment Notes
+- Package everything into its own container. Minimal `Dockerfile` example:
+  ```Dockerfile
+  FROM python:3.11-slim
+  WORKDIR /app
+  COPY requirements.txt ./
+  RUN pip install --no-cache-dir -r requirements.txt
+  COPY . .
+  CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+  ```
+- Mount the lawyer data file (or switch `FileLawyerRepository` to hit your Postgres/Mongo via HTTP/Prisma if you prefer a single source of truth).
+- The SentenceTransformer model downloads on first run and is cached in `~/.cache`. Pre-bake it in your container or volume to avoid cold-start latency.
+
+## Next Steps / Customization Ideas
+- Replace `FileLawyerRepository` with a direct Postgres query from your Express service (REST or gRPC) to avoid duplicating storage.
+- Add feedback loop: when a client selects a lawyer, log it and fine-tune or re-rank using LightGBM.
+- Plug in categorical boosts (e.g., if case.category === 'CRIMINAL', add 0.1 to lawyers listing criminal specializations).
