@@ -1,0 +1,128 @@
+[
+  {
+    "lawyer_id": "LAW-1001",
+    "name": "Ananda Chaiyasit",
+    "slogan": "ปกป้องสิทธิคุณด้วยหลักฐานที่หนักแน่น",
+    "summary": "อดีตอัยการฝ่ายคดีพิเศษ เชี่ยวชาญคดีทำร้ายร่างกายและกรรโชกทรัพย์",
+    "description": "กว่า 12 ปีในคดีอาญาที่เกี่ยวข้องกับความรุนแรงในเขตกรุงเทพฯ และปริมณฑล",
+    "lawfirm_name": "Bangkok Justice Alliance",
+    "consult_min_price": 1500,
+    "consult_max_price": 3200,
+    "document_delivery_min_price": 800,
+    "document_delivery_max_price": 1800,
+    "civil_case_specialization": [],
+    "criminal_case_specialization": [
+      "Assault",
+      "Battery",
+      "Threat",
+      "Extortion"
+    ],
+    "services": ["POLICE_STATION_SUPPORT", "CRIMINAL_DEFENSE"],
+    "has_lawyer_license": true,
+    "is_verified_by_court": true,
+    "languages": ["th", "en"],
+    "education": [
+      "LL.B Thammasat University",
+      "Diploma in Criminal Justice, Chulalongkorn University"
+    ],
+    "notable_cases": [
+      "2019 Assault appeal overturned the conviction",
+      "2023 Extortion acquittal for SME owner"
+    ],
+    "avg_rating": 4.88,
+    "review_count": 126
+  },
+  {
+    "lawyer_id": "LAW-1002",
+    "name": "Patchara Roengchai",
+    "slogan": "Negotiation first, litigation only when needed",
+    "summary": "ทนายความคดีแพ่งที่มีประสบการณ์ในข้อพิพาทธุรกิจและอสังหาริมทรัพย์",
+    "description": "ช่วยผู้ประกอบการ SMEs จัดการสัญญาและหนี้สินมานานกว่า 9 ปี",
+    "lawfirm_name": "Sukhumvit Legal Lab",
+    "consult_min_price": 1200,
+    "consult_max_price": 2800,
+    "document_delivery_min_price": 500,
+    "document_delivery_max_price": 1200,
+    "civil_case_specialization": [
+      "Contract",
+      "Property",
+      "Corporate"
+    ],
+    "criminal_case_specialization": [],
+    "services": ["CONTRACT_REVIEW", "DEBT_RESTRUCTURE"],
+    "has_lawyer_license": true,
+    "is_verified_by_court": true,
+    "languages": ["th", "en", "cn"],
+    "education": [
+      "LL.B Ramkhamhaeng University"
+    ],
+    "notable_cases": [
+      "Recovered 32M THB in property dispute"
+    ],
+    "avg_rating": 4.63,
+    "review_count": 74
+  },
+  {
+    "lawyer_id": "LAW-1003",
+    "name": "Jiraporn Kantasiri",
+    "slogan": "ครอบครัวสำคัญที่สุด เราดูแลให้",
+    "summary": "เน้นคดีครอบครัวและละเมิด ใช้งานจิตวิทยาร่วมกับสหวิชาชีพ",
+    "description": "ผ่านคดีความรุนแรงในครอบครัวกว่า 200 คดีทั่วประเทศ",
+    "lawfirm_name": "Harmony Legal Clinic",
+    "consult_min_price": 1000,
+    "consult_max_price": 2500,
+    "document_delivery_min_price": 400,
+    "document_delivery_max_price": 900,
+    "civil_case_specialization": [
+      "Family",
+      "Inheritance",
+      "Domestic Violence"
+    ],
+    "criminal_case_specialization": [
+      "Domestic Abuse"
+    ],
+    "services": ["MEDIATION", "FAMILY_PROTECTION_ORDER"],
+    "has_lawyer_license": true,
+    "is_verified_by_court": false,
+    "languages": ["th"],
+    "education": [
+      "LL.B Chiang Mai University"
+    ],
+    "notable_cases": [
+      "Protection order for celebrity client 2022"
+    ],
+    "avg_rating": 4.91,
+    "review_count": 98
+  },
+  {
+    "lawyer_id": "LAW-1004",
+    "name": "Dr. Veera Suttiporn",
+    "slogan": "จากห้องปฏิบัติการสู่ศาล",
+    "summary": "Criminal defense litigator who blends forensic science with court strategy.",
+    "description": "Focus on violent crimes, homicide attempts, and forensic-heavy cases.",
+    "lawfirm_name": "Forensic Defense Partners",
+    "consult_min_price": 2500,
+    "consult_max_price": 5000,
+    "document_delivery_min_price": 1200,
+    "document_delivery_max_price": 2500,
+    "civil_case_specialization": [],
+    "criminal_case_specialization": [
+      "Homicide",
+      "DNA Evidence",
+      "Forensic"
+    ],
+    "services": ["TRIAL_STRATEGY", "FORENSIC_REVIEW"],
+    "has_lawyer_license": true,
+    "is_verified_by_court": true,
+    "languages": ["th", "en", "jp"],
+    "education": [
+      "LL.B Chulalongkorn University",
+      "PhD Forensic Science"
+    ],
+    "notable_cases": [
+      "High-profile attempted murder acquittal 2021"
+    ],
+    "avg_rating": 4.75,
+    "review_count": 56
+  }
+]

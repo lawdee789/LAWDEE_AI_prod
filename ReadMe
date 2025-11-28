@@ -1,1 +1,107 @@
-ReadMe
+Lawyer Matching Microservice
+============================
+
+This repository now contains a FastAPI-based microservice (`lawyer_match_service`) that scores and returns the top-K lawyers for any incoming case payload. Your existing Express backend can call this service over HTTP without needing to embed ML logic directly in Node.js.
+
+Project layout
+--------------
+
+```
+lawyer_match_service/
+  app/
+    api.py            # FastAPI routes + dependency wiring
+    matching.py       # Embedding-based ranking logic
+    models.py         # Pydantic schemas shared across layers
+    repository.py     # File/HTTP data sources for lawyer profiles
+    encoder.py        # SentenceTransformer wrapper
+    config.py         # pydantic-settings configuration
+    main.py           # uvicorn entrypoint (app.main:app)
+  data/
+    lawyers_sample.json
+  tests/
+    test_matching.py
+  requirements.txt
+```
+
+Getting started
+---------------
+
+```
+cd lawyer_match_service
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8010
+```
+
+Key environment variables (prefixed with `LAWYER_MATCH_`):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `EMBEDDING_MODEL_NAME` | `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` | HuggingFace model for Thai/English text. |
+| `LAWYER_REPOSITORY_PATH` | `./data/lawyers_sample.json` | JSON seed used when no HTTP source is provided. |
+| `LAWYER_REPOSITORY_URL` | `None` | Optional Express endpoint returning `{ success, data: [...] }`. |
+| `DEFAULT_TOP_K` | `5` | Number of lawyers returned when the client omits `top_k`. |
+| `MIN_SCORE_THRESHOLD` | `0.35` | Filters out weak matches. |
+
+API contract
+------------
+
+- `POST /match-lawyers`
+
+Request:
+
+```json
+{
+  "case": {
+    "case_id": "2ed9...",
+    "title": "โดนข่มขู่คำร้ายร่างกาย",
+    "description": "รายละเอียดทั้งหมด...",
+    "category": "CRIMINAL",
+    "service": "CRIMINAL_DEFENSE",
+    "note": "ข้อความเสริม"
+  },
+  "top_k": 3
+}
+```
+
+Response:
+
+```json
+{
+  "case_id": "2ed9...",
+  "generated_at": "2025-11-28T05:22:10.210Z",
+  "lawyers": [
+    {
+      "lawyer": { "...entire LawyerProfile..." },
+      "score": 0.87,
+      "breakdown": {
+        "similarity": 0.77,
+        "specialization_bonus": 0.1,
+        "service_bonus": 0.0
+      }
+    }
+  ]
+}
+```
+
+- `POST /refresh-lawyers` — forces the service to refetch lawyers (useful after new profiles are added).
+- `GET /health` — lightweight readiness probe.
+
+Express integration
+-------------------
+
+```ts
+import axios from 'axios'
+
+const MATCH_SERVICE_URL = process.env.MATCH_SERVICE_URL ?? 'http://localhost:8010'
+
+export async function getLawyerCandidates(casePayload, topK = 3) {
+  const response = await axios.post(`${MATCH_SERVICE_URL}/match-lawyers`, {
+    case: casePayload,
+    top_k: topK,
+  })
+  return response.data.lawyers
+}
+```
+
+Call the helper right after you persist or retrieve a case object; pass the same shape you already expose in Prisma/Mongoose. Add retry logic/timeouts on the Express side according to your deployment requirements.
