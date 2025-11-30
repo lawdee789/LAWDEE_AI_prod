@@ -1,1 +1,114 @@
-ReadMe
+# Thai Lawyer Recommendation Microservice (Flask)
+
+A lightweight Flask service that scores lawyers against a Thai case description using multilingual sentence transformers. Your existing Express backend can call this service (default `http://localhost:5050`) to obtain top-k lawyer recommendations.
+
+## Features
+- Sentence-transformer embeddings optimized for Thai semantics.
+- In-memory cosine similarity ranking with adjustable `top_k` and `min_score`.
+- Pluggable lawyer dataset (`LAWYERS_DATA_PATH`) loaded from JSON.
+- Simple REST contract that mirrors the expected Express integration.
+
+## Project Layout
+- `app/` – Flask application, routes, services, and config.
+- `data/lawyers.sample.json` – sample dataset used to bootstrap the index.
+- `requirements.txt` – Python dependencies.
+- `.env.example` – configuration template.
+
+## Prerequisites
+- Python 3.11 (recommended) with `pip`.
+- Sufficient disk space to download the selected sentence-transformer model (~500 MB).
+
+## Setup & Run
+1. Create a virtual environment and install dependencies:
+   ```bash
+   cd /workspace
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+2. Copy the environment template and adjust as needed:
+   ```bash
+   cp .env.example .env
+   # Update LAWYERS_DATA_PATH, MODEL_NAME, DEFAULT_TOP_K, etc.
+   ```
+3. Start the Flask API (default host `0.0.0.0`, port `5050`):
+   ```bash
+   python -m app.main
+   ```
+4. Verify health:
+   ```bash
+   curl http://localhost:5050/health
+   ```
+
+## REST API
+### `POST /recommendations`
+Request body:
+```json
+{
+  "description": "รายละเอียดคดีภาษาไทย",
+  "top_k": 5,
+  "min_score": 0.3
+}
+```
+Response body:
+```json
+{
+  "success": true,
+  "count": 3,
+  "data": [
+    {
+      "lawyer_id": "LAW-001",
+      "name": "ทนายธนา สุริยะ",
+      "score": 0.82,
+      "summary": "...",
+      "civil_case_specialization": ["สัญญากู้ยืม"],
+      "criminal_case_specialization": ["ทำร้ายร่างกาย"],
+      "description": "...",
+      "metadata": {
+        "lawfirm_name": "Suriya Litigation Group",
+        "consult_min_price": 2500,
+        "consult_max_price": 4500,
+        "document_delivery_min_price": 1200,
+        "document_delivery_max_price": 2000,
+        "years_experience": 12,
+        "languages": ["ไทย", "อังกฤษ"]
+      }
+    }
+  ],
+  "metadata": {
+    "model_name": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+    "top_k": 5,
+    "min_score": 0.3
+  },
+  "timestamp": "2025-11-30T12:34:56.000Z"
+}
+```
+
+## Updating Lawyer Data
+- Replace `data/lawyers.sample.json` with data pulled from Postgres/Mongo or another source. The service expects a list of lawyer objects (see sample file for required keys).
+- Call `ranker.refresh()` (add a management endpoint or restart the service) whenever the JSON changes.
+
+## Express Integration (`localhost:5050`)
+1. Set the Flask URL in your Node environment:
+   ```bash
+   export FLASK_URL=http://localhost:5050
+   ```
+2. Keep your existing controller logic. The Axios call already matches this API contract:
+   ```ts
+   const response = await axios.post(`${process.env.FLASK_URL}/recommendations`, {
+     description: caseRequest.description,
+     top_k: 5,
+   });
+   return res.status(200).json({
+     success: true,
+     count: response.data.count,
+     data: response.data.data,
+   });
+   ```
+3. Handle failures by falling back to a curated list or instructing the client to retry, as the Flask service will propagate HTTP 4xx/5xx codes.
+
+## Production Notes
+- Persist lawyer embeddings (e.g., SQLite, Redis, or vector DB) if the dataset is large or frequently updated.
+- Run behind Gunicorn or another WSGI server for concurrency (`gunicorn 'app.main:create_app()'`).
+- Monitor model download time in CI/CD; pre-download the model and bake it into an image if deploying via Docker.
+- Consider batching calls if the Express layer needs multiple recommendations simultaneously.
