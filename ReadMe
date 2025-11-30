@@ -1,1 +1,115 @@
-ReadMe
+# Thai Lawyer Matching Service
+
+Semantic search microservice for ranking Thai lawyer profiles against case descriptions. The app uses Flask, `sentence-transformers`, and cosine similarity to expose a `/recommendations` endpoint that your existing Express backend can call.
+
+## Prerequisites
+- Python 3.11+
+- pip
+- (Optional) virtualenv/conda for isolated environments
+
+## Quick Start
+1. Clone this repo and move into the project.
+2. Create a virtual environment: `python3 -m venv .venv && source .venv/bin/activate`.
+3. Install dependencies: `pip install -r requirements.txt`.
+4. Copy the environment template: `cp .env.example .env`.
+5. Adjust variables if needed (e.g., change the listening port or dataset path).
+6. Run the API: `python main.py`.
+7. The Flask server defaults to `http://localhost:8000`.
+
+### Environment variables
+| Variable | Description | Default |
+| --- | --- | --- |
+| `PORT` | Flask port | `8000` |
+| `FLASK_DEBUG` | Enables hot reload/logging | `1` |
+| `SENTENCE_MODEL` | HuggingFace model name | `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` |
+| `LAWYER_DATA_PATH` | Path to lawyer dataset (JSON) | `data/lawyers.sample.json` |
+| `DEFAULT_TOP_K` | Max number of lawyers returned | `5` |
+| `CORS_ORIGINS` | Comma-separated origins allowed to call Flask | `http://localhost:5050,http://localhost:3000` |
+| `FLASK_URL` | URL consumed by the Express app | `http://localhost:8000` |
+
+> Tip: keep `SENTENCE_MODEL` multilingual to guarantee Thai coverage. The default model is already optimized for Thai semantics.
+
+## Lawyer dataset
+- Sample file lives at `data/lawyers.sample.json` with 5 curated profiles.
+- Add or replace lawyers by editing the JSON list. Fields such as `specialties`, `languages`, `tags`, and `description` feed the semantic index.
+- When the file changes, restart the Flask process (or call the `/health` endpoint to check status).
+
+## API
+
+### `GET /health`
+Returns a lightweight status payload.
+
+```json
+{
+  "success": true,
+  "message": "Lawyer recommender online",
+  "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+}
+```
+
+### `POST /recommendations`
+Body:
+```json
+{
+  "description": "รายละเอียดคดีภาษาไทย",
+  "top_k": 5
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "count": 3,
+  "data": [
+    {
+      "lawyer_id": "law-001",
+      "name": "ทนายปิ่นมณี ศรีกาญจน์",
+      "summary": "...",
+      "score": 0.8731
+    }
+  ]
+}
+```
+- `description` is required.
+- `top_k` is optional; defaults to `DEFAULT_TOP_K`.
+- `score` is cosine similarity (0–1) indicating semantic relevance.
+
+## Integrating with the Express backend (`localhost:5050`)
+1. Make sure the Flask service is running (`FLASK_URL` should match the server URL, e.g., `http://localhost:8000`).
+2. Add/update `.env` inside the Express project:
+   ```env
+   FLASK_URL=http://localhost:8000
+   ```
+3. Use the provided service method (example using Axios + Prisma):
+   ```ts
+   const response = await axios.post(`${process.env.FLASK_URL}/recommendations`, {
+     description: caseRequest.description,
+     top_k: 5,
+   });
+   const recommendedLawyers = response.data.data;
+   ```
+4. The Express controller can forward the `recommendedLawyers` array directly to clients, or map it to existing Prisma models.
+
+### End-to-end test flow
+1. Start Express on `localhost:5050`.
+2. Start Flask on `localhost:8000`.
+3. Trigger the `GET /cases/:caseId/recommendations` (or equivalent) route in Express.
+4. Express will fetch the case description from PostgreSQL, call the Flask `/recommendations` endpoint, and return the ranked list to the frontend.
+
+### Manual testing without Express
+```
+curl -X POST http://localhost:8000/recommendations \
+  -H "Content-Type: application/json" \
+  -d '{"description":"เหตุเกิดเมื่อวันที่ ..."}'
+```
+
+## Deployment notes
+- Package with `gunicorn`: `gunicorn --bind 0.0.0.0:$PORT main:app`.
+- Persist the `data/lawyers.sample.json` file or point `LAWYER_DATA_PATH` to a mounted volume or database export.
+- For GPU inference, install a CUDA-enabled PyTorch before `sentence-transformers`.
+
+## Troubleshooting
+- **Model download slow**: pre-download the model and set `SENTENCE_MODEL` to a local path.
+- **Dataset missing**: ensure `LAWYER_DATA_PATH` exists (copy from `.env.example`).
+- **Cross-origin errors**: add your frontend origin to `CORS_ORIGINS` in `.env`.
