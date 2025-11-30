@@ -1,1 +1,181 @@
-ReadMe
+Lawyer Matching Microservice
+===========================
+
+This repository contains a lightweight Python microservice that ranks Thai legal cases against the platform's lawyer inventory using multilingual sentence-transformer embeddings. It is designed to run alongside the existing Express backend (running on `localhost:5050`) and exposes a small HTTP API that the Node service can call when it needs semantic matches.
+
+Stack Highlights
+----------------
+
+- FastAPI + Uvicorn ASGI server for minimal overhead and async IO.
+- `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` for high-quality Thai embeddings.
+- JSON-based persistence (no new database dependency) backed by `data/lawyers.json`.
+- Endpoints for lawyer ingestion plus case-to-lawyer matching with cosine similarity.
+
+Prerequisites
+-------------
+
+- Python 3.10 or newer (3.11 recommended).
+- `git`, `curl`, and build-essential for PyTorch dependencies downloaded by sentence-transformers.
+- Optional: `pyenv` or another toolchain manager if you need to juggle Python versions.
+
+Initial Setup
+-------------
+
+```bash
+cd /workspace
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e .
+```
+
+Common environment variables (override via `.env` or shell):
+
+- `SENTENCE_MODEL_NAME`: defaults to `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`.
+- `DATA_DIR`: folder for persisted lawyers (defaults to `/workspace/data`).
+
+Running the Service
+-------------------
+
+```bash
+source .venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+The service exposes:
+
+- `GET /healthz` – model readiness probe.
+- `GET /v1/lawyers` – list everything currently indexed.
+- `POST /v1/lawyers` – upsert (create or update) a lawyer profile and embedding.
+- `POST /v1/match-lawyers` – compute top-K matches for a case payload.
+
+Persisted data lives inside `data/lawyers.json`. Delete that file if you ever need a clean slate.
+
+Seeding Lawyers
+---------------
+
+The matching endpoint requires stored lawyer embeddings. Upsert them via HTTP once you finish promoting a clerk to lawyer inside the Node app:
+
+```bash
+curl -X POST http://localhost:8000/v1/lawyers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "lawyer-123",
+    "name": "คุณอารีย์ ศรีวงศ์",
+    "slogan": "ทนายอาญา-แพ่งครบวงจร",
+    "summary": "เชี่ยวชาญคดีทำร้ายร่างกายและละเมิด",
+    "lawfirm_name": "Areeya Legal",
+    "consult_min_price": 1500,
+    "consult_max_price": 3500,
+    "document_delivery_min_price": 500,
+    "document_delivery_max_price": 1200,
+    "education": "นิติศาสตร์บัณฑิต จุฬาฯ",
+    "description": "ประสบการณ์กว่า 10 ปีด้านคดีอาญาและครอบครัว",
+    "civil_case_specialization": ["LABOR", "FAMILY"],
+    "criminal_case_specialization": ["ASSAULT", "DRUG"],
+    "has_lawyer_license": true,
+    "is_verified_by_court": true,
+    "verification_docs": [],
+    "office_location": "กรุงเทพฯ",
+    "languages": ["TH", "EN"],
+    "years_of_experience": 10
+  }'
+```
+
+Matching Cases
+--------------
+
+```bash
+curl -X POST http://localhost:8000/v1/match-lawyers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "top_k": 3,
+    "case": {
+      "case_id": "2ed91761-dd1d-458e-aba3-6ffed46f8482",
+      "client_id": "270eda87-a942-408f-9c01-84ad6ca5ee83",
+      "title": "โดนข่มขู่คำร้ายร่างกาย",
+      "category": "CRIMINAL",
+      "status": "INACTIVE",
+      "service": null,
+      "description": "เหตุเกิดเมื่อวันที่ ...",
+      "note": "อยากให้คนมารัก"
+    }
+  }'
+```
+
+Response shape:
+
+```json
+{
+  "case_id": "2ed91761-dd1d-458e-aba3-6ffed46f8482",
+  "top_k": 3,
+  "computed_at": "2025-11-30T12:34:56.000Z",
+  "results": [
+    {
+      "score": 0.81,
+      "lawyer": {
+        "lawyer_id": "lawyer-123",
+        "name": "...",
+        "...": "..."
+      }
+    }
+  ]
+}
+```
+
+Express Integration (localhost:5050)
+------------------------------------
+
+1. **Start the Python service** (see above) on `http://localhost:8000`.
+2. **From Express**, call the matcher whenever you need lawyer candidates. Example service wrapper using `axios`:
+
+```ts
+import axios from 'axios'
+
+const MATCHER_URL = process.env.MATCHER_URL ?? 'http://localhost:8000'
+
+export async function matchLawyersForCase(casePayload: CasePayload, topK = 4) {
+  const { data } = await axios.post(`${MATCHER_URL}/v1/match-lawyers`, {
+    case: casePayload,
+    top_k: topK,
+  })
+  return data.results
+}
+```
+
+3. **Wire it into your existing route** (running on `localhost:5050`):
+
+```ts
+app.post('/cases/:caseId/match', async (req, res) => {
+  const casePayload = /* fetch case payload via Prisma */;
+  const matches = await matchLawyersForCase(casePayload, req.body.top_k ?? 4)
+  res.json({ success: true, count: matches.length, data: matches })
+})
+```
+
+4. **During lawyer creation** (your existing `createLawyer` controller), send the normalized payload to `POST /v1/lawyers` after the Prisma transaction completes so that the new lawyer is searchable right away. Map Prisma fields to the JSON body shown earlier—`user_id` must match `lawyer_id`.
+
+Operational Tips
+----------------
+
+- Sentence-transformer weights download on first boot (~1GB). Keep the service warm in production.
+- The JSON store is fine for a few thousand lawyers. For larger deployments, swap `LawyerStore` with a Postgres/PGVector implementation—the API layer stays the same.
+- Embeddings are normalized, so cosine similarity equals dot product. Sorting is already handled server-side.
+
+Testing
+-------
+
+After activating the virtual environment:
+
+```bash
+pytest
+```
+
+(Add tests as you extend the project.)
+
+Next Steps
+----------
+
+- Add authentication (shared secret or mTLS) if deploying outside of a private network.
+- Replace JSON persistence with your existing relational database once you're ready.
+- Stream matches to the frontend for better UX (server-sent events or websockets) if needed.
