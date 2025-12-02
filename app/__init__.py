@@ -18,7 +18,7 @@ def create_app(config: AppConfig | None = None) -> Flask:
     app.config["APP_CONFIG"] = cfg
     app.extensions["lawyer_ranker"] = LawyerRanker(
         model_name=cfg.model_name,
-        lawyer_data_path=cfg.lawyer_data_path,
+        lawyer_data_source=cfg.lawyer_data_source,
         default_top_k=cfg.default_top_k,
     )
 

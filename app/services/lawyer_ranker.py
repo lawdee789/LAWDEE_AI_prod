@@ -6,16 +6,24 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
 import numpy as np
+import requests
 from sentence_transformers import SentenceTransformer
 
 
 class LawyerRanker:
     """Ranks lawyers against a case description using sentence transformers."""
 
-    def __init__(self, model_name: str, lawyer_data_path: str, default_top_k: int = 5) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        lawyer_data_source: str,
+        default_top_k: int = 5,
+        data_fetch_timeout: float = 10.0,
+    ) -> None:
         self.model_name = model_name
-        self.lawyer_data_path = Path(lawyer_data_path)
+        self.lawyer_data_source = lawyer_data_source
         self.default_top_k = default_top_k
+        self.data_fetch_timeout = data_fetch_timeout
 
         self._model: SentenceTransformer | None = None
         self._lawyers: List[Dict[str, Any]] = []
@@ -40,16 +48,51 @@ class LawyerRanker:
             raise RuntimeError(f"Failed to load model '{self.model_name}': {exc}") from exc
 
     def _load_lawyers(self) -> List[Dict[str, Any]]:
-        if not self.lawyer_data_path.exists():
+        payload = self._load_dataset_payload()
+
+        dataset: Any = None
+        if isinstance(payload, dict):
+            for key in ("data", "results", "items", "lawyers"):
+                maybe = payload.get(key)
+                if isinstance(maybe, list):
+                    dataset = maybe
+                    break
+        elif isinstance(payload, list):
+            dataset = payload
+
+        if not isinstance(dataset, list) or not dataset:
+            raise ValueError("Lawyer dataset must be a non-empty list of objects")
+        return dataset
+
+    @staticmethod
+    def _is_remote_source(source: str) -> bool:
+        normalized = source.strip().lower()
+        return normalized.startswith(("http://", "https://"))
+
+    def _load_dataset_payload(self) -> Any:
+        source = self.lawyer_data_source
+        if self._is_remote_source(source):
+            return self._load_from_url(source)
+        return self._load_from_file(Path(source))
+
+    def _load_from_file(self, path: Path) -> Any:
+        if not path.exists():
             raise FileNotFoundError(
-                f"Lawyer dataset not found at '{self.lawyer_data_path}'. "
-                "Did you run the setup instructions?"
+                f"Lawyer dataset not found at '{path}'. Did you run the setup instructions?"
             )
-        with self.lawyer_data_path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if not isinstance(data, list) or not data:
-            raise ValueError("Lawyer dataset must be a non-empty list")
-        return data
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def _load_from_url(self, url: str) -> Any:
+        try:
+            response = requests.get(url, timeout=self.data_fetch_timeout)
+            response.raise_for_status()
+        except requests.RequestException as exc:  # pragma: no cover - network call
+            raise RuntimeError(f"Failed to download lawyer dataset: {exc}") from exc
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise ValueError(f"Lawyer dataset at '{url}' is not valid JSON") from exc
 
     @staticmethod
     def _stringify(value: Any) -> str | None:
