@@ -62,7 +62,7 @@ def _collect_from_nested(
     return results
 
 
-def _case_to_prompt(case_payload: Dict[str, Any]) -> str:
+def _case_to_prompt(case_payload: Dict[str, Any], explicit_case_id: str | None = None) -> str:
     sections: List[str] = []
 
     def add(label: str, value: Any) -> None:
@@ -70,7 +70,7 @@ def _case_to_prompt(case_payload: Dict[str, Any]) -> str:
         if text:
             sections.append(f"{label}: {text}")
 
-    add("Case ID", case_payload.get("case_id"))
+    add("Case ID", case_payload.get("case_id") or explicit_case_id)
     add("Title", case_payload.get("title"))
     add("Category", case_payload.get("category"))
     add("Status", case_payload.get("status"))
@@ -132,20 +132,47 @@ def recommendations():
     description = payload.get("description", "")
     top_k = payload.get("top_k")
     case_payload = payload.get("case")
+    case_id = payload.get("case_id")
+    lawyers_payload = payload.get("lawyers")
+
+    if lawyers_payload is not None and not isinstance(lawyers_payload, list):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "`lawyers` must be an array of lawyer objects",
+                }
+            ),
+            400,
+        )
 
     if isinstance(case_payload, dict):
-        case_prompt = _case_to_prompt(case_payload)
+        case_prompt = _case_to_prompt(case_payload, explicit_case_id=case_id)
         if description:
             description = f"{description.strip()}\n\n{case_prompt}"
         else:
             description = case_prompt
+    elif case_id:
+        case_line = f"Case ID: {case_id}"
+        description = f"{description.strip()}\n\n{case_line}" if description else case_line
 
     if not description or not description.strip():
         return (
             jsonify(
                 {
                     "success": False,
-                    "message": "`description` is required in the request body",
+                    "message": "`description` or `case` data is required in the request body",
+                }
+            ),
+            400,
+        )
+
+    if lawyers_payload is not None and len(lawyers_payload) == 0:
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "`lawyers` cannot be an empty array",
                 }
             ),
             400,
@@ -171,7 +198,9 @@ def recommendations():
     ranker = _get_ranker()
 
     try:
-        recommendations = ranker.rank(description=description, top_k=normalized_top_k)
+        recommendations = ranker.rank(
+            description=description, top_k=normalized_top_k, lawyers=lawyers_payload
+        )
     except ValueError as exc:  # Raised by the ranker for invalid inputs
         return jsonify({"success": False, "message": str(exc)}), 400
     except Exception:  # pragma: no cover - we don't expect to reach this
@@ -186,4 +215,11 @@ def recommendations():
             500,
         )
 
-    return jsonify({"success": True, "count": len(recommendations), "data": recommendations})
+    response_payload = {
+        "success": True,
+        "case_id": case_id,
+        "count": len(recommendations),
+        "total": len(recommendations),
+        "data": recommendations,
+    }
+    return jsonify(response_payload)

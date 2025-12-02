@@ -35,11 +35,12 @@ class LawyerRanker:
     def _warm_up(self) -> None:
         with self._lock:
             self._model = self._model or self._load_model()
-            self._lawyers = self._load_lawyers()
-            documents = [self._lawyer_to_document(meta) for meta in self._lawyers]
-            self._embeddings = self._model.encode(
-                documents, convert_to_numpy=True, normalize_embeddings=True
-            )
+            if self.lawyer_data_source:
+                self._lawyers = self._load_lawyers()
+                self._embeddings = self._embed_lawyers(self._lawyers)
+            else:
+                self._lawyers = []
+                self._embeddings = None
 
     def _load_model(self) -> SentenceTransformer:
         try:
@@ -71,6 +72,8 @@ class LawyerRanker:
 
     def _load_dataset_payload(self) -> Any:
         source = self.lawyer_data_source
+        if not source:
+            raise ValueError("LAWYER_DATA_URL/LAWYER_DATA_PATH is not configured")
         if self._is_remote_source(source):
             return self._load_from_url(source)
         return self._load_from_file(Path(source))
@@ -93,6 +96,17 @@ class LawyerRanker:
             return response.json()
         except ValueError as exc:
             raise ValueError(f"Lawyer dataset at '{url}' is not valid JSON") from exc
+
+    def _embed_lawyers(self, lawyers: List[Dict[str, Any]]) -> np.ndarray:
+        if self._model is None:
+            self._warm_up()
+        model = self._model
+        if model is None:
+            raise RuntimeError("SentenceTransformer model is not initialized")
+        documents = [self._lawyer_to_document(meta) for meta in lawyers]
+        if not documents:
+            raise ValueError("No lawyer text documents available for embedding")
+        return model.encode(documents, convert_to_numpy=True, normalize_embeddings=True)
 
     @staticmethod
     def _stringify(value: Any) -> str | None:
@@ -214,7 +228,12 @@ class LawyerRanker:
 
         return "\n".join(sections)
 
-    def rank(self, description: str, top_k: int | None = None) -> List[Dict[str, Any]]:
+    def rank(
+        self,
+        description: str,
+        top_k: int | None = None,
+        lawyers: List[Dict[str, Any]] | None = None,
+    ) -> List[Dict[str, Any]]:
         if not description or not description.strip():
             raise ValueError("Case description must not be empty")
 
@@ -222,21 +241,34 @@ class LawyerRanker:
         if k <= 0:
             raise ValueError("top_k must be a positive integer")
 
-        if self._embeddings is None or self._model is None:
+        if self._model is None:
             self._warm_up()
+
+        dataset = lawyers or self._lawyers
+        if not dataset:
+            raise ValueError(
+                "No lawyer candidates available. Provide `lawyers` in the request payload "
+                "or configure LAWYER_DATA_URL/LAWYER_DATA_PATH."
+            )
+
+        if lawyers is not None:
+            embeddings = self._embed_lawyers(dataset)
+        else:
+            embeddings = self._embeddings
+            if embeddings is None:
+                embeddings = self._embed_lawyers(dataset)
+                self._embeddings = embeddings
 
         query_vector = self._model.encode(
             description, convert_to_numpy=True, normalize_embeddings=True
         )
-        embeddings = self._embeddings
-        if embeddings is None:
-            raise RuntimeError("Embeddings are not initialized")
+
         similarities = embeddings @ query_vector
 
         top_indices = np.argsort(similarities)[::-1][: min(k, len(similarities))]
         recommendations: List[Dict[str, Any]] = []
         for idx in top_indices:
-            lawyer_payload = dict(self._lawyers[int(idx)])
+            lawyer_payload = dict(dataset[int(idx)])
             lawyer_payload["score"] = round(float(similarities[int(idx)]), 4)
             recommendations.append(lawyer_payload)
         return recommendations
