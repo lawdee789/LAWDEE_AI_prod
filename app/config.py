@@ -29,7 +29,7 @@ class AppConfig:
             "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
         )
         lawyer_data_source = os.getenv(
-            "LAWYER_DATA_URL", os.getenv("LAWYER_DATA_PATH", "data/lawyers.sample.json")
+            "LAWYER_DATA_URL", os.getenv("LAWYER_DATA_PATH", "http://localhost:5050/api/v1/lawyers")
         )
         default_top_k = int(os.getenv("DEFAULT_TOP_K", "5"))
         cors_raw = os.getenv("CORS_ORIGINS", "*")
