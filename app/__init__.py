@@ -1,28 +1,37 @@
 from __future__ import annotations
 
-from flask import Flask
-from flask_cors import CORS
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import AppConfig
-from .routes import api_bp
+from .routes import router
 from .services.lawyer_ranker import LawyerRanker
 
 
-def create_app(config: AppConfig | None = None) -> Flask:
-    """Application factory used by both the CLI and the WSGI server."""
+def create_app(config: AppConfig | None = None) -> FastAPI:
+    """Application factory."""
 
     cfg = config or AppConfig.from_env()
-    app = Flask(__name__)
-    CORS(app, origins=cfg.cors_origins)
+    app = FastAPI(title="Lawyer Recommender API")
+    
+    # Add CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cfg.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-    app.config["APP_CONFIG"] = cfg
-    app.extensions["lawyer_ranker"] = LawyerRanker(
+    # Initialize lawyer ranker and store in app state
+    app.state.config = cfg
+    app.state.lawyer_ranker = LawyerRanker(
         model_name=cfg.model_name,
         lawyer_data_source=cfg.lawyer_data_source,
         default_top_k=cfg.default_top_k,
     )
 
-    app.register_blueprint(api_bp)
+    app.include_router(router)
 
     return app
 

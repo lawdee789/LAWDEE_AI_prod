@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uvicorn
 from dotenv import load_dotenv
 
 from app import create_app
@@ -11,4 +12,9 @@ app = create_app(config)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=config.port, debug=config.debug)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=config.port,
+        reload=config.debug,
+    )

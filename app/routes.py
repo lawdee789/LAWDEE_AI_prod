@@ -1,32 +1,42 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
-from flask import Blueprint, current_app, jsonify, request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from .config import AppConfig
 from .services.lawyer_ranker import LawyerRanker
 
-api_bp = Blueprint("api", __name__)
+router = APIRouter()
 
 
-def _get_ranker() -> LawyerRanker:
-    ranker = current_app.extensions.get("lawyer_ranker")
+def _get_ranker(request: Request) -> LawyerRanker:
+    ranker = request.app.state.lawyer_ranker
     if ranker is None:
         raise RuntimeError("LawyerRanker has not been initialized")
     return ranker
 
 
-@api_bp.route("/health", methods=["GET"])
-def health_check():
-    cfg: AppConfig = current_app.config.get("APP_CONFIG")
-    return jsonify(
-        {
-            "success": True,
-            "message": "Lawyer recommender online",
-            "model": cfg.model_name if cfg else None,
-        }
-    )
+def _get_config(request: Request) -> AppConfig:
+    return request.app.state.config
+
+
+class RecommendationRequest(BaseModel):
+    description: str = Field(default="")
+    top_k: Optional[int] = None
+    case: Optional[Dict[str, Any]] = None
+    case_id: Optional[str] = None
+    lawyers: Optional[List[Dict[str, Any]]] = None
+
+
+@router.get("/health")
+def health_check(cfg: AppConfig = Depends(_get_config)):
+    return {
+        "success": True,
+        "message": "Lawyer recommender online",
+        "model": cfg.model_name if cfg else None,
+    }
 
 
 def _sanitize_text(value: Any) -> str | None:
@@ -126,24 +136,18 @@ def _case_to_prompt(case_payload: Dict[str, Any], explicit_case_id: str | None =
     return "\n".join(sections)
 
 
-@api_bp.route("/recommendations", methods=["POST"])
-def recommendations():
-    payload = request.get_json(silent=True) or {}
-    description = payload.get("description", "")
-    top_k = payload.get("top_k")
-    case_payload = payload.get("case")
-    case_id = payload.get("case_id")
-    lawyers_payload = payload.get("lawyers")
+@router.post("/recommendations")
+def recommendations(data: RecommendationRequest, ranker: LawyerRanker = Depends(_get_ranker), cfg: AppConfig = Depends(_get_config)):
+    description = data.description
+    top_k = data.top_k
+    case_payload = data.case
+    case_id = data.case_id
+    lawyers_payload = data.lawyers
 
     if lawyers_payload is not None and not isinstance(lawyers_payload, list):
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "`lawyers` must be an array of lawyer objects",
-                }
-            ),
-            400,
+        raise HTTPException(
+            status_code=400,
+            detail="`lawyers` must be an array of lawyer objects",
         )
 
     if isinstance(case_payload, dict):
@@ -157,62 +161,38 @@ def recommendations():
         description = f"{description.strip()}\n\n{case_line}" if description else case_line
 
     if not description or not description.strip():
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "`description` or `case` data is required in the request body",
-                }
-            ),
-            400,
+        raise HTTPException(
+            status_code=400,
+            detail="`description` or `case` data is required in the request body",
         )
 
     if lawyers_payload is not None and len(lawyers_payload) == 0:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "`lawyers` cannot be an empty array",
-                }
-            ),
-            400,
+        raise HTTPException(
+            status_code=400,
+            detail="`lawyers` cannot be an empty array",
         )
-
-    cfg: AppConfig = current_app.config.get("APP_CONFIG")
 
     try:
         normalized_top_k = int(top_k) if top_k is not None else cfg.default_top_k
         if normalized_top_k <= 0:
             raise ValueError
     except (TypeError, ValueError):
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "`top_k` must be a positive integer",
-                }
-            ),
-            400,
+        raise HTTPException(
+            status_code=400,
+            detail="`top_k` must be a positive integer",
         )
-
-    ranker = _get_ranker()
 
     try:
         recommendations = ranker.rank(
             description=description, top_k=normalized_top_k, lawyers=lawyers_payload
         )
     except ValueError as exc:  # Raised by the ranker for invalid inputs
-        return jsonify({"success": False, "message": str(exc)}), 400
-    except Exception:  # pragma: no cover - we don't expect to reach this
-        current_app.logger.exception("Unexpected error while ranking lawyers")
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "Failed to compute recommendations",
-                }
-            ),
-            500,
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as e:  # pragma: no cover - we don't expect to reach this
+        print(f"Unexpected error while ranking lawyers: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to compute recommendations",
         )
 
     response_payload = {
@@ -222,4 +202,4 @@ def recommendations():
         "total": len(recommendations),
         "data": recommendations,
     }
-    return jsonify(response_payload)
+    return response_payload
