@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Sequence
 
 import numpy as np
 import requests
-from sentence_transformers import SentenceTransformer
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 class LawyerRanker:
@@ -49,6 +51,8 @@ class LawyerRanker:
 
     def _load_model(self) -> SentenceTransformer:
         try:
+            from sentence_transformers import SentenceTransformer
+
             return SentenceTransformer(self.model_name)
         except Exception as exc:  # pragma: no cover - depends on runtime env
             raise RuntimeError(f"Failed to load model '{self.model_name}': {exc}") from exc
