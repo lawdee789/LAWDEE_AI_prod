@@ -203,3 +203,7 @@ def recommendations(data: RecommendationRequest, ranker: LawyerRanker = Depends(
         "data": recommendations,
     }
     return response_payload
+
+@router.get("/")
+def root():
+    return {"success": True, "message": "capstone_ml online"}
