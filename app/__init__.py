@@ -29,6 +29,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         model_name=cfg.model_name,
         lawyer_data_source=cfg.lawyer_data_source,
         default_top_k=cfg.default_top_k,
+        huggingface_api_key=cfg.huggingface_api_key,
     )
 
     app.include_router(router)

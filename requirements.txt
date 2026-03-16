@@ -2,7 +2,7 @@ fastapi>=0.100.0
 uvicorn>=0.24.0
 gunicorn>=21.2.0
 python-dotenv>=1.0.0
-sentence-transformers>=3.0.0
+# sentence-transformers replaced by HuggingFace API
 numpy>=1.26.0
 requests>=2.31.0
 pydantic>=2.0.0

@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence
 
 import numpy as np
 import requests
 
-if TYPE_CHECKING:
-    from sentence_transformers import SentenceTransformer
+HUGGINGFACE_API_URL = "https://router.huggingface.co/hf-inference/models/"
 
 
 class LawyerRanker:
@@ -20,50 +19,38 @@ class LawyerRanker:
         model_name: str,
         lawyer_data_source: str,
         default_top_k: int = 5,
+        huggingface_api_key: str | None = None,
         data_fetch_timeout: float = 10.0,
     ) -> None:
         self.model_name = model_name
         self.lawyer_data_source = lawyer_data_source
         self.default_top_k = default_top_k
+        self.huggingface_api_key = huggingface_api_key
         self.data_fetch_timeout = data_fetch_timeout
-
-        self._model: SentenceTransformer | None = None
+        
+        self.api_url = (
+            f"{HUGGINGFACE_API_URL}{self.model_name}/pipeline/feature-extraction"
+        )
         self._lawyers: List[Dict[str, Any]] = []
         self._embeddings: np.ndarray | None = None
         self._lock = threading.Lock()
 
     def _warm_up(self) -> None:
         with self._lock:
-            self._model = self._model or self._load_model()
             if self.lawyer_data_source:
                 self._lawyers = self._load_lawyers()
-                self._embeddings = self._embed_lawyers(self._lawyers)
+                self._embeddings = self._embed_texts([self._lawyer_to_document(m) for m in self._lawyers])
             else:
                 self._lawyers = []
                 self._embeddings = None
 
-    def _ensure_model(self) -> None:
-        """Load only the sentence-transformer model on demand."""
-        if self._model is None:
-            with self._lock:
-                self._model = self._model or self._load_model()
-
     def _ensure_ready(self) -> None:
-        """Load the model and cached embeddings on demand."""
-        self._ensure_model()
+        """Load the cached embeddings on demand."""
         if self.lawyer_data_source and (not self._lawyers or self._embeddings is None):
             with self._lock:
                 if not self._lawyers or self._embeddings is None:
                     self._lawyers = self._load_lawyers()
-                    self._embeddings = self._embed_lawyers(self._lawyers)
-
-    def _load_model(self) -> SentenceTransformer:
-        try:
-            from sentence_transformers import SentenceTransformer
-
-            return SentenceTransformer(self.model_name)
-        except Exception as exc:  # pragma: no cover - depends on runtime env
-            raise RuntimeError(f"Failed to load model '{self.model_name}': {exc}") from exc
+                    self._embeddings = self._embed_texts([self._lawyer_to_document(m) for m in self._lawyers])
 
     def _load_lawyers(self) -> List[Dict[str, Any]]:
         payload = self._load_dataset_payload()
@@ -114,16 +101,53 @@ class LawyerRanker:
         except ValueError as exc:
             raise ValueError(f"Lawyer dataset at '{url}' is not valid JSON") from exc
 
-    def _embed_lawyers(self, lawyers: List[Dict[str, Any]]) -> np.ndarray:
-        if self._model is None:
-            self._ensure_model()
-        model = self._model
-        if model is None:
-            raise RuntimeError("SentenceTransformer model is not initialized")
-        documents = [self._lawyer_to_document(meta) for meta in lawyers]
-        if not documents:
-            raise ValueError("No lawyer text documents available for embedding")
-        return model.encode(documents, convert_to_numpy=True, normalize_embeddings=True)
+    def _embed_texts(self, texts: List[str]) -> np.ndarray:
+        if not texts:
+            raise ValueError("No texts provided for embedding")
+            
+        headers = {}
+        if self.huggingface_api_key:
+            headers["Authorization"] = f"Bearer {self.huggingface_api_key}"
+            
+        try:
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json={"inputs": texts},
+                timeout=30.0
+            )
+            response.raise_for_status()
+            embeddings = response.json()
+            if isinstance(embeddings, dict) and embeddings.get("error"):
+                raise RuntimeError(str(embeddings["error"]))
+            
+            # The API sometimes returns a nested list depending on model output, e.g. [batch, seq_len, hidden] for feature extraction vs [batch, hidden] for sentence-transformers
+            # For sentence-transformers, it usually returns a list of lists: [[v1, v2...], [v1, v2...]]
+            arr = np.array(embeddings)
+            
+            # Some feature-extraction models return [batch, hidden] while others
+            # return token-level embeddings shaped [batch, seq_len, hidden].
+            # Mean-pool token embeddings into one vector per input text.
+            if arr.ndim == 3:
+                arr = arr.mean(axis=1)
+            elif arr.ndim != 2:
+                raise ValueError(
+                    f"Unexpected embedding shape from HuggingFace API: {arr.shape}"
+                )
+
+            norms = np.linalg.norm(arr, axis=1, keepdims=True)
+            # Avoid division by zero
+            norms[norms == 0] = 1
+            arr = arr / norms
+            return arr
+                
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (401, 403):
+                raise RuntimeError("HuggingFace API Authorization failed. Please check your HUGGINGFACE_API_KEY.") from exc
+            error_msg = exc.response.text if exc.response is not None else str(exc)
+            raise RuntimeError(f"HuggingFace API Request failed: {error_msg}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"Failed to compute embeddings via API: {exc}") from exc
 
     @staticmethod
     def _stringify(value: Any) -> str | None:
@@ -150,10 +174,11 @@ class LawyerRanker:
         for item in items:
             if isinstance(item, dict):
                 keys = fields or item.keys()
-                for key in keys:
-                    chunk = cls._stringify(item.get(key))
-                    if chunk:
-                        chunks.append(chunk)
+                if keys:
+                    for key in keys:
+                        chunk = cls._stringify(item.get(key))
+                        if chunk:
+                            chunks.append(chunk)
             else:
                 chunk = cls._stringify(item)
                 if chunk:
@@ -258,9 +283,7 @@ class LawyerRanker:
         if k <= 0:
             raise ValueError("top_k must be a positive integer")
 
-        if lawyers is not None:
-            self._ensure_model()
-        else:
+        if lawyers is None:
             self._ensure_ready()
 
         dataset = lawyers or self._lawyers
@@ -271,16 +294,14 @@ class LawyerRanker:
             )
 
         if lawyers is not None:
-            embeddings = self._embed_lawyers(dataset)
+            embeddings = self._embed_texts([self._lawyer_to_document(m) for m in dataset])
         else:
             embeddings = self._embeddings
             if embeddings is None:
-                embeddings = self._embed_lawyers(dataset)
+                embeddings = self._embed_texts([self._lawyer_to_document(m) for m in dataset])
                 self._embeddings = embeddings
 
-        query_vector = self._model.encode(
-            description, convert_to_numpy=True, normalize_embeddings=True
-        )
+        query_vector = self._embed_texts([description])[0]
 
         similarities = embeddings @ query_vector
 
@@ -288,7 +309,8 @@ class LawyerRanker:
         recommendations: List[Dict[str, Any]] = []
         for idx in top_indices:
             lawyer_payload = dict(dataset[int(idx)])
-            lawyer_payload["score"] = round(float(similarities[int(idx)]), 4)
+            sim_score = float(similarities[int(idx)])
+            lawyer_payload["score"] = round(sim_score, 4)
             recommendations.append(lawyer_payload)
         return recommendations
 

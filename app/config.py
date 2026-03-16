@@ -12,6 +12,7 @@ class AppConfig:
     model_name: str
     lawyer_data_source: str
     default_top_k: int
+    huggingface_api_key: str | None = None
     cors_origins: List[str] = field(default_factory=list)
     debug: bool = False
     port: int = 8000
@@ -29,7 +30,7 @@ class AppConfig:
             "sentence-transformers/distiluse-base-multilingual-cased-v2",
         )
         lawyer_data_source = os.getenv(
-            "LAWYER_DATA_URL", os.getenv("LAWYER_DATA_PATH", "http://localhost:5050/api/v1/lawyers")
+            "LAWYER_DATA_URL", os.getenv("LAWYER_DATA_PATH", "https://lawdee-backend-prod.onrender.com/api/v1/lawyers")
         )
         default_top_k = int(os.getenv("DEFAULT_TOP_K", "5"))
         cors_raw = os.getenv("CORS_ORIGINS", "*")
@@ -40,10 +41,12 @@ class AppConfig:
             os.getenv("DEBUG")
         )
         port = int(os.getenv("PORT", os.getenv("FLASK_RUN_PORT", "8000")))
+        huggingface_api_key = os.getenv("HUGGINGFACE_API_KEY")
         return cls(
             model_name=model_name,
             lawyer_data_source=lawyer_data_source,
             default_top_k=default_top_k,
+            huggingface_api_key=huggingface_api_key,
             cors_origins=cors_origins,
             debug=debug,
             port=port,
