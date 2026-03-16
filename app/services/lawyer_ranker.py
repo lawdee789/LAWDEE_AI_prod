@@ -30,8 +30,6 @@ class LawyerRanker:
         self._embeddings: np.ndarray | None = None
         self._lock = threading.Lock()
 
-        self._warm_up()
-
     def _warm_up(self) -> None:
         with self._lock:
             self._model = self._model or self._load_model()
@@ -41,6 +39,13 @@ class LawyerRanker:
             else:
                 self._lawyers = []
                 self._embeddings = None
+
+    def _ensure_ready(self) -> None:
+        """Load the model and cached embeddings on demand."""
+        if self._model is None or (
+            self.lawyer_data_source and (not self._lawyers or self._embeddings is None)
+        ):
+            self._warm_up()
 
     def _load_model(self) -> SentenceTransformer:
         try:
@@ -99,7 +104,7 @@ class LawyerRanker:
 
     def _embed_lawyers(self, lawyers: List[Dict[str, Any]]) -> np.ndarray:
         if self._model is None:
-            self._warm_up()
+            self._ensure_ready()
         model = self._model
         if model is None:
             raise RuntimeError("SentenceTransformer model is not initialized")
@@ -241,8 +246,7 @@ class LawyerRanker:
         if k <= 0:
             raise ValueError("top_k must be a positive integer")
 
-        if self._model is None:
-            self._warm_up()
+        self._ensure_ready()
 
         dataset = lawyers or self._lawyers
         if not dataset:
