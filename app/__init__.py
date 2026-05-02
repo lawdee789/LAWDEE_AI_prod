@@ -13,6 +13,7 @@ def create_app(config: AppConfig | None = None) -> Flask:
 
     cfg = config or AppConfig.from_env()
     app = Flask(__name__)
+    app.json.ensure_ascii = False
     CORS(app, origins=cfg.cors_origins)
 
     app.config["APP_CONFIG"] = cfg

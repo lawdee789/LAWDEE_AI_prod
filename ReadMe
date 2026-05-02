@@ -74,6 +74,39 @@ Response:
 - `description` is required.
 - `top_k` is optional; defaults to `DEFAULT_TOP_K`.
 - `score` is cosine similarity (0–1) indicating semantic relevance.
+- If lawyer objects include `lawyer_embedding`, the service reuses those stored vectors instead of embedding every lawyer profile again.
+
+### `POST /embeddings`
+Create a normalized vector embedding for one text value or one lawyer profile. The Express backend calls this endpoint when a lawyer profile is created or updated, then stores the returned vector in PostgreSQL.
+
+Body with text:
+```json
+{
+  "text": "ทนายเชี่ยวชาญคดีอาญาและอาชญากรรมไซเบอร์"
+}
+```
+
+Body with lawyer fields:
+```json
+{
+  "lawyer": {
+    "slogan": "เชี่ยวชาญคดีอาญา",
+    "summary": "ช่วยคดีฉ้อโกงออนไลน์และบัญชีม้า",
+    "description": "ตรวจหลักฐานแชท สลิปโอนเงิน และพยานหลักฐานดิจิทัล",
+    "ประเภทงานที่เชี่ยวชาญ": ["คดีอาญา", "อาชญากรรมไซเบอร์"]
+  }
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+  "dimension": 768,
+  "embedding": [0.0123, -0.0456]
+}
+```
 
 ## Integrating with the Express backend (`localhost:5050`)
 1. Make sure the Flask service is running (`FLASK_URL` should match the server URL, e.g., `http://localhost:8000`).

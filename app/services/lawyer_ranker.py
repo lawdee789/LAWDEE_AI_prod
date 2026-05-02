@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Sequence, Set
 
 import numpy as np
 import requests
@@ -108,6 +109,47 @@ class LawyerRanker:
             raise ValueError("No lawyer text documents available for embedding")
         return model.encode(documents, convert_to_numpy=True, normalize_embeddings=True)
 
+    def embed_text(self, text: str) -> List[float]:
+        if not text or not text.strip():
+            raise ValueError("Text must not be empty")
+        if self._model is None:
+            self._warm_up()
+        model = self._model
+        if model is None:
+            raise RuntimeError("SentenceTransformer model is not initialized")
+        vector = model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
+        return [float(item) for item in vector.tolist()]
+
+    def embed_lawyer(self, lawyer: Dict[str, Any]) -> List[float]:
+        document = self._lawyer_to_document(lawyer)
+        if not document.strip():
+            raise ValueError("Lawyer profile has no text available for embedding")
+        return self.embed_text(document)
+
+    @classmethod
+    def _embedding_from_lawyers(
+        cls, lawyers: List[Dict[str, Any]]
+    ) -> np.ndarray | None:
+        vectors: List[List[float]] = []
+        expected_size: int | None = None
+        for lawyer in lawyers:
+            raw_vector = lawyer.get("lawyer_embedding") or lawyer.get("embedding")
+            if not isinstance(raw_vector, list) or not raw_vector:
+                return None
+            try:
+                vector = [float(item) for item in raw_vector]
+            except (TypeError, ValueError):
+                return None
+            if expected_size is None:
+                expected_size = len(vector)
+            elif len(vector) != expected_size:
+                return None
+            vectors.append(vector)
+
+        if not vectors:
+            return None
+        return np.array(vectors, dtype=float)
+
     @staticmethod
     def _stringify(value: Any) -> str | None:
         if value is None:
@@ -144,8 +186,102 @@ class LawyerRanker:
         return chunks
 
     @classmethod
+    def _normalize_filter_token(cls, value: Any) -> str | None:
+        text = cls._stringify(value)
+        if not text:
+            return None
+        normalized = re.sub(r"[\s\-]+", "_", text.strip().lower())
+        normalized = re.sub(r"_+", "_", normalized)
+        return normalized.strip("_") or None
+
+    @classmethod
+    def _filter_tokens_from_value(
+        cls, value: Any, fields: Sequence[str] | None = None
+    ) -> Set[str]:
+        tokens: Set[str] = set()
+        for chunk in cls._collect_text_chunks(value, fields):
+            token = cls._normalize_filter_token(chunk)
+            if token:
+                tokens.add(token)
+        return tokens
+
+    @classmethod
+    def _lawyer_filter_tokens(cls, meta: Dict[str, Any]) -> Set[str]:
+        token_fields = (
+            "ประเภทของงาน",
+            "หัวข้อบริการ",
+            "ประเภทงานที่เชี่ยวชาญ",
+            "category",
+            "type",
+            "work_type",
+            "workType",
+            "job_type",
+            "jobType",
+            "service",
+            "service_topic",
+            "serviceTopic",
+            "slogan",
+            "summary",
+        )
+        tokens: Set[str] = set()
+        for field in token_fields:
+            tokens.update(cls._filter_tokens_from_value(meta.get(field)))
+
+        tokens.update(cls._filter_tokens_from_value(meta.get("specialties")))
+        tokens.update(
+            cls._filter_tokens_from_value(meta.get("specializations"), ("specialization",))
+        )
+        tokens.update(cls._filter_tokens_from_value(meta.get("expertise")))
+        tokens.update(cls._filter_tokens_from_value(meta.get("expertise_types")))
+        tokens.update(cls._filter_tokens_from_value(meta.get("ประเภทงานที่เชี่ยวชาญ")))
+        tokens.update(cls._filter_tokens_from_value(meta.get("work_types")))
+        tokens.update(cls._filter_tokens_from_value(meta.get("job_types")))
+        tokens.update(cls._filter_tokens_from_value(meta.get("services")))
+        tokens.update(cls._filter_tokens_from_value(meta.get("service_topics")))
+        tokens.update(cls._filter_tokens_from_value(meta.get("tags")))
+        return tokens
+
+    @classmethod
+    def _lawyer_matches_filter(
+        cls, meta: Dict[str, Any], filter_groups: Sequence[Set[str]]
+    ) -> bool:
+        if not filter_groups:
+            return True
+        lawyer_tokens = cls._lawyer_filter_tokens(meta)
+        for filter_criteria in filter_groups:
+            for criterion in filter_criteria:
+                for lawyer_token in lawyer_tokens:
+                    if criterion == lawyer_token:
+                        return True
+                    if criterion in lawyer_token or lawyer_token in criterion:
+                        return True
+        return False
+
+    @classmethod
+    def _normalize_filter_groups(cls, filter_criteria: Any) -> List[Set[str]]:
+        if not filter_criteria:
+            return []
+
+        raw_groups: Iterable[Any]
+        if isinstance(filter_criteria, Mapping):
+            raw_groups = filter_criteria.values()
+        else:
+            raw_groups = [filter_criteria]
+
+        groups: List[Set[str]] = []
+        for raw_group in raw_groups:
+            values = raw_group if isinstance(raw_group, (list, tuple, set)) else [raw_group]
+            group = {
+                token
+                for token in (cls._normalize_filter_token(item) for item in values)
+                if token
+            }
+            if group:
+                groups.append(group)
+        return groups
+
+    @classmethod
     def _lawyer_to_document(cls, meta: Dict[str, Any]) -> str:
-        user = meta.get("user") or {}
         sections: List[str] = []
 
         def add(value: Any) -> None:
@@ -153,78 +289,10 @@ class LawyerRanker:
             if text:
                 sections.append(text)
 
-        add(meta.get("lawyer_id"))
-        add(meta.get("name") or user.get("name"))
         add(meta.get("slogan"))
         add(meta.get("summary"))
         add(meta.get("description"))
-        add(meta.get("note"))
-        add(meta.get("lawfirm_name") or meta.get("law_firm"))
-        add(meta.get("education"))
-        add(meta.get("account_status"))
-        add(f"Service scope: {meta.get('service')}" if meta.get("service") else None)
-
-        numeric_fields = {
-            "cases_closed_count": "cases closed",
-            "avg_rating": "average rating",
-            "consult_min_price": "consult min price",
-            "consult_max_price": "consult max price",
-            "document_delivery_min_price": "document delivery min price",
-            "document_delivery_max_price": "document delivery max price",
-        }
-        for field, label in numeric_fields.items():
-            value = meta.get(field)
-            if value is not None:
-                add(f"{label}: {value}")
-
-        add(
-            f"has lawyer license: {meta.get('has_lawyer_license')}"
-            if meta.get("has_lawyer_license") is not None
-            else None
-        )
-        add(
-            f"is verified by court: {meta.get('is_verified_by_court')}"
-            if meta.get("is_verified_by_court") is not None
-            else None
-        )
-
-        sections.extend(cls._collect_text_chunks(meta.get("specialties")))
-        sections.extend(
-            cls._collect_text_chunks(meta.get("specializations"), ("specialization",))
-        )
-        sections.extend(cls._collect_text_chunks(meta.get("languages")))
-        sections.extend(cls._collect_text_chunks(meta.get("tags")))
-        sections.extend(cls._collect_text_chunks(meta.get("awards")))
-        sections.extend(
-            cls._collect_text_chunks(meta.get("achievements"), ("title", "description"))
-        )
-        sections.extend(
-            cls._collect_text_chunks(
-                meta.get("verification_docs"),
-                ("issuer", "doc_number", "docs", "title"),
-            )
-        )
-        sections.extend(
-            cls._collect_text_chunks(
-                meta.get("cases"), ("title", "category", "status", "service")
-            )
-        )
-        sections.extend(
-            cls._collect_text_chunks(
-                user,
-                (
-                    "email",
-                    "tel",
-                    "role",
-                    "note",
-                    "street",
-                    "district",
-                    "city",
-                    "province",
-                    "zipcode",
-                ),
-            )
-        )
+        sections.extend(cls._collect_text_chunks(meta.get("ประเภทงานที่เชี่ยวชาญ")))
 
         return "\n".join(sections)
 
@@ -233,6 +301,7 @@ class LawyerRanker:
         description: str,
         top_k: int | None = None,
         lawyers: List[Dict[str, Any]] | None = None,
+        filter_criteria: Any = None,
     ) -> List[Dict[str, Any]]:
         if not description or not description.strip():
             raise ValueError("Case description must not be empty")
@@ -251,7 +320,20 @@ class LawyerRanker:
                 "or configure LAWYER_DATA_URL/LAWYER_DATA_PATH."
             )
 
-        if lawyers is not None:
+        filter_groups = self._normalize_filter_groups(filter_criteria)
+        if filter_groups:
+            dataset = [
+                lawyer
+                for lawyer in dataset
+                if self._lawyer_matches_filter(lawyer, filter_groups)
+            ]
+            if not dataset:
+                return []
+
+        stored_embeddings = self._embedding_from_lawyers(dataset)
+        if stored_embeddings is not None:
+            embeddings = stored_embeddings
+        elif lawyers is not None or filter_groups:
             embeddings = self._embed_lawyers(dataset)
         else:
             embeddings = self._embeddings
