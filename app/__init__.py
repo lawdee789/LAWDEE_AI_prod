@@ -21,6 +21,8 @@ def create_app(config: AppConfig | None = None) -> Flask:
         model_name=cfg.model_name,
         lawyer_data_source=cfg.lawyer_data_source,
         default_top_k=cfg.default_top_k,
+        rating_score_weight=cfg.rating_score_weight,
+        max_rating=cfg.max_rating,
     )
 
     app.register_blueprint(api_bp)

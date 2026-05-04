@@ -25,6 +25,7 @@ def health_check():
             "success": True,
             "message": "Lawyer recommender online",
             "model": cfg.model_name if cfg else None,
+            "rating_score_weight": cfg.rating_score_weight if cfg else None,
         }
     )
 

@@ -149,6 +149,41 @@ class RecommendationApiTest(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["data"][0]["lawyer_id"], "stored-cyber")
 
+    def test_recommendations_boost_higher_rated_lawyers_after_similarity(self):
+        response = self.client.post(
+            "/recommendations",
+            json={
+                "case": {
+                    "ประเภทของงาน": "คดีอาญา",
+                    "หัวข้อบริการ": "อาชญากรรมไซเบอร์",
+                    "หัวข้องาน": "ถูกหลอกโอนเงินออนไลน์",
+                    "รายละเอียดงาน": "ลูกค้าถูกฉ้อโกงออนไลน์",
+                },
+                "lawyers": [
+                    {
+                        "lawyer_id": "same-match-low-rating",
+                        "lawyer_embedding": [0.0, 0.0, 1.0, 0.0],
+                        "ประเภทงานที่เชี่ยวชาญ": ["คดีอาญา"],
+                        "avg_rating": 1.0,
+                    },
+                    {
+                        "lawyer_id": "same-match-high-rating",
+                        "lawyer_embedding": [0.0, 0.0, 1.0, 0.0],
+                        "ประเภทงานที่เชี่ยวชาญ": ["คดีอาญา"],
+                        "avg_rating": 5.0,
+                    },
+                ],
+                "top_k": 2,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["data"][0]["lawyer_id"], "same-match-high-rating")
+        self.assertEqual(payload["data"][0]["similarity_score"], payload["data"][1]["similarity_score"])
+        self.assertGreater(payload["data"][0]["rating_score"], payload["data"][1]["rating_score"])
+        self.assertGreater(payload["data"][0]["score"], payload["data"][1]["score"])
+
     def test_recommendations_can_build_prompt_from_case_payload(self):
         response = self.client.post(
             "/recommendations",

@@ -12,6 +12,8 @@ class AppConfig:
     model_name: str
     lawyer_data_source: str
     default_top_k: int
+    rating_score_weight: float = 0.10
+    max_rating: float = 5.0
     cors_origins: List[str] = field(default_factory=list)
     debug: bool = False
     port: int = 8000
@@ -32,6 +34,8 @@ class AppConfig:
             "LAWYER_DATA_URL", os.getenv("LAWYER_DATA_PATH", "http://localhost:5050/api/v1/lawyers")
         )
         default_top_k = int(os.getenv("DEFAULT_TOP_K", "5"))
+        rating_score_weight = float(os.getenv("RATING_SCORE_WEIGHT", "0.10"))
+        max_rating = float(os.getenv("MAX_RATING", "5.0"))
         cors_raw = os.getenv("CORS_ORIGINS", "*")
         cors_origins = [origin.strip() for origin in cors_raw.split(",") if origin.strip()]
         if not cors_origins:
@@ -44,6 +48,8 @@ class AppConfig:
             model_name=model_name,
             lawyer_data_source=lawyer_data_source,
             default_top_k=default_top_k,
+            rating_score_weight=rating_score_weight,
+            max_rating=max_rating,
             cors_origins=cors_origins,
             debug=debug,
             port=port,

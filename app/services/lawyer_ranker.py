@@ -20,11 +20,15 @@ class LawyerRanker:
         lawyer_data_source: str,
         default_top_k: int = 5,
         data_fetch_timeout: float = 10.0,
+        rating_score_weight: float = 0.10,
+        max_rating: float = 5.0,
     ) -> None:
         self.model_name = model_name
         self.lawyer_data_source = lawyer_data_source
         self.default_top_k = default_top_k
         self.data_fetch_timeout = data_fetch_timeout
+        self.rating_score_weight = max(0.0, rating_score_weight)
+        self.max_rating = max(0.1, max_rating)
 
         self._model: SentenceTransformer | None = None
         self._lawyers: List[Dict[str, Any]] = []
@@ -296,6 +300,23 @@ class LawyerRanker:
 
         return "\n".join(sections)
 
+    @staticmethod
+    def _numeric_value(value: Any) -> float | None:
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _rating_score(self, meta: Dict[str, Any]) -> float:
+        for field in ("avg_rating", "rating", "review_rating", "score_rating"):
+            rating = self._numeric_value(meta.get(field))
+            if rating is not None:
+                normalized = rating / self.max_rating
+                return float(np.clip(normalized, 0.0, 1.0))
+        return 0.0
+
     def rank(
         self,
         description: str,
@@ -346,12 +367,16 @@ class LawyerRanker:
         )
 
         similarities = embeddings @ query_vector
+        rating_scores = np.array([self._rating_score(lawyer) for lawyer in dataset])
+        final_scores = similarities + (self.rating_score_weight * rating_scores)
 
-        top_indices = np.argsort(similarities)[::-1][: min(k, len(similarities))]
+        top_indices = np.argsort(final_scores)[::-1][: min(k, len(final_scores))]
         recommendations: List[Dict[str, Any]] = []
         for idx in top_indices:
             lawyer_payload = dict(dataset[int(idx)])
-            lawyer_payload["score"] = round(float(similarities[int(idx)]), 4)
+            lawyer_payload["similarity_score"] = round(float(similarities[int(idx)]), 4)
+            lawyer_payload["rating_score"] = round(float(rating_scores[int(idx)]), 4)
+            lawyer_payload["score"] = round(float(final_scores[int(idx)]), 4)
             recommendations.append(lawyer_payload)
         return recommendations
 
