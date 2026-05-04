@@ -28,7 +28,7 @@ class AppConfig:
     def from_env(cls) -> "AppConfig":
         model_name = os.getenv(
             "SENTENCE_MODEL",
-            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         )
         lawyer_data_source = os.getenv(
             "LAWYER_DATA_URL", os.getenv("LAWYER_DATA_PATH", "http://localhost:5050/api/v1/lawyers")

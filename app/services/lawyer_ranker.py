@@ -33,9 +33,7 @@ class LawyerRanker:
         self._model: SentenceTransformer | None = None
         self._lawyers: List[Dict[str, Any]] = []
         self._embeddings: np.ndarray | None = None
-        self._lock = threading.Lock()
-
-        self._warm_up()
+        self._lock = threading.RLock()
 
     def _warm_up(self) -> None:
         with self._lock:
@@ -52,6 +50,27 @@ class LawyerRanker:
             return SentenceTransformer(self.model_name)
         except Exception as exc:  # pragma: no cover - depends on runtime env
             raise RuntimeError(f"Failed to load model '{self.model_name}': {exc}") from exc
+
+    def _ensure_model(self) -> SentenceTransformer:
+        if self._model is None:
+            with self._lock:
+                self._model = self._model or self._load_model()
+        if self._model is None:
+            raise RuntimeError("SentenceTransformer model is not initialized")
+        return self._model
+
+    def _ensure_default_lawyers(self) -> None:
+        if self._lawyers and self._embeddings is not None:
+            return
+        with self._lock:
+            if self._lawyers and self._embeddings is not None:
+                return
+            if self.lawyer_data_source:
+                self._lawyers = self._load_lawyers()
+                self._embeddings = self._embed_lawyers(self._lawyers)
+            else:
+                self._lawyers = []
+                self._embeddings = None
 
     def _load_lawyers(self) -> List[Dict[str, Any]]:
         payload = self._load_dataset_payload()
@@ -103,11 +122,7 @@ class LawyerRanker:
             raise ValueError(f"Lawyer dataset at '{url}' is not valid JSON") from exc
 
     def _embed_lawyers(self, lawyers: List[Dict[str, Any]]) -> np.ndarray:
-        if self._model is None:
-            self._warm_up()
-        model = self._model
-        if model is None:
-            raise RuntimeError("SentenceTransformer model is not initialized")
+        model = self._ensure_model()
         documents = [self._lawyer_to_document(meta) for meta in lawyers]
         if not documents:
             raise ValueError("No lawyer text documents available for embedding")
@@ -116,11 +131,7 @@ class LawyerRanker:
     def embed_text(self, text: str) -> List[float]:
         if not text or not text.strip():
             raise ValueError("Text must not be empty")
-        if self._model is None:
-            self._warm_up()
-        model = self._model
-        if model is None:
-            raise RuntimeError("SentenceTransformer model is not initialized")
+        model = self._ensure_model()
         vector = model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
         return [float(item) for item in vector.tolist()]
 
@@ -331,8 +342,8 @@ class LawyerRanker:
         if k <= 0:
             raise ValueError("top_k must be a positive integer")
 
-        if self._model is None:
-            self._warm_up()
+        if lawyers is None:
+            self._ensure_default_lawyers()
 
         dataset = lawyers or self._lawyers
         if not dataset:
@@ -362,7 +373,8 @@ class LawyerRanker:
                 embeddings = self._embed_lawyers(dataset)
                 self._embeddings = embeddings
 
-        query_vector = self._model.encode(
+        model = self._ensure_model()
+        query_vector = model.encode(
             description, convert_to_numpy=True, normalize_embeddings=True
         )
 
